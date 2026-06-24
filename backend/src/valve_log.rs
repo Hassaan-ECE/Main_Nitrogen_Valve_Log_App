@@ -1,6 +1,7 @@
 use chrono::{Local, Utc};
 use rust_xlsxwriter::{Color, Format, FormatAlign, FormatBorder, Workbook};
 use std::{
+    env,
     fs::{self, OpenOptions},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
@@ -14,6 +15,8 @@ use crate::shared_sync::{self, SharedSyncPaths};
 
 const WORKBOOK_FILE_NAME: &str = "Main Nitrogen Valve Log.xlsx";
 const SOURCE_LOG_FILE_NAME: &str = "events.jsonl";
+const LOCAL_LOG_DIR_NAME: &str = "logs";
+pub(crate) const LOCAL_LOG_ROOT_ENV: &str = "NITROGEN_VALVE_LOG_LOCAL_ROOT";
 const VALVE_NAME: &str = "Main Nitrogen Valve";
 const CLOSE_ACTION: &str = "Closed Valve";
 const OPEN_ACTION: &str = "Opened Valve";
@@ -160,7 +163,7 @@ pub fn get_current_valve_state(
 ) -> Result<ValveStateSnapshot, ValveLogError> {
     let shared_paths = shared_sync::resolve_shared_paths();
     if let Some(watcher) = app.try_state::<crate::shared_watcher::SharedStateWatcher>() {
-        let _ = watcher.ensure_watching(app.clone(), &shared_paths.shared_dir);
+        let _ = watcher.ensure_watching(app.clone(), &shared_paths.shared_root);
     }
 
     let local_paths = local_log_paths(app)?;
@@ -240,7 +243,9 @@ fn ensure_log_directory(paths: &LocalLogPaths) -> Result<(), ValveLogError> {
             "The log folder could not be created.",
         )
         .with_detail(error.to_string())
-    })
+    })?;
+
+    Ok(())
 }
 
 fn log_valve_action_at_paths(
@@ -301,7 +306,7 @@ fn log_valve_action_at_paths(
         .map_err(map_shared_sync_error)?;
 
     if let Some(watcher) = app.try_state::<crate::shared_watcher::SharedStateWatcher>() {
-        let _ = watcher.ensure_watching(app.clone(), &shared_paths.shared_dir);
+        let _ = watcher.ensure_watching(app.clone(), &shared_paths.shared_root);
     }
     let _ = app.emit(crate::shared_watcher::VALVE_LOG_CHANGED_EVENT, ());
 
@@ -348,6 +353,18 @@ fn validate_transition(
     Ok(())
 }
 
+fn resolve_log_root(shared_paths: &shared_sync::SharedSyncPaths, app_data_dir: &Path) -> PathBuf {
+    if let Some(override_root) = env::var_os(LOCAL_LOG_ROOT_ENV) {
+        return PathBuf::from(override_root);
+    }
+
+    if shared_sync::shared_root_available(shared_paths) {
+        return shared_paths.shared_root.join(LOCAL_LOG_DIR_NAME);
+    }
+
+    app_data_dir.join(LOCAL_LOG_DIR_NAME)
+}
+
 fn local_log_paths(app: &tauri::AppHandle) -> Result<LocalLogPaths, ValveLogError> {
     let app_data_dir = app.path().app_data_dir().map_err(|error| {
         ValveLogError::new(
@@ -356,7 +373,7 @@ fn local_log_paths(app: &tauri::AppHandle) -> Result<LocalLogPaths, ValveLogErro
         )
         .with_detail(error.to_string())
     })?;
-    let log_dir = app_data_dir.join("logs");
+    let shared_paths = shared_sync::resolve_shared_paths();
     let client_id = shared_sync::client_id(&app_data_dir).map_err(|error| {
         ValveLogError::new(
             "log_directory_failed",
@@ -364,6 +381,7 @@ fn local_log_paths(app: &tauri::AppHandle) -> Result<LocalLogPaths, ValveLogErro
         )
         .with_detail(error)
     })?;
+    let log_dir = resolve_log_root(&shared_paths, &app_data_dir);
 
     Ok(LocalLogPaths {
         source_log_path: log_dir.join(SOURCE_LOG_FILE_NAME),

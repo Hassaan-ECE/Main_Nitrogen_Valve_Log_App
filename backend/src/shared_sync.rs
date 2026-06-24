@@ -143,16 +143,23 @@ pub(crate) fn merged_canonical_entries(
     local_entries: &[ValveLogEntry],
     paths: &SharedSyncPaths,
 ) -> Result<Vec<ValveLogEntry>, String> {
-    let shared_entries = if shared_root_available(paths) {
-        load_shared_events(&paths.events_dir)?
-    } else {
-        Vec::new()
-    };
+    Ok(authoritative_canonical_entries(local_entries, paths)?)
+}
 
-    Ok(merge_canonical_entries(collect_entries(
-        local_entries,
-        &shared_entries,
-    )))
+pub(crate) fn authoritative_canonical_entries(
+    source_entries: &[ValveLogEntry],
+    paths: &SharedSyncPaths,
+) -> Result<Vec<ValveLogEntry>, String> {
+    if !shared_root_available(paths) {
+        return Ok(merge_canonical_entries(source_entries.to_vec()));
+    }
+
+    if !source_entries.is_empty() {
+        return Ok(merge_canonical_entries(source_entries.to_vec()));
+    }
+
+    let legacy_shared_events = load_shared_events(&paths.events_dir)?;
+    Ok(merge_canonical_entries(legacy_shared_events))
 }
 
 pub(crate) fn compute_merged_snapshot(
@@ -184,15 +191,6 @@ pub(crate) fn load_fast_snapshot(
     local_entries: &[ValveLogEntry],
     paths: &SharedSyncPaths,
 ) -> Result<ValveStateSnapshot, String> {
-    let shared_available = shared_root_available(paths);
-
-    if shared_available {
-        if let Ok(snapshot) = read_shared_state(paths) {
-            let last_shared_update = snapshot.last_shared_update.clone();
-            return Ok(enrich_snapshot(snapshot, paths, last_shared_update));
-        }
-    }
-
     load_merged_snapshot(local_entries, paths)
 }
 

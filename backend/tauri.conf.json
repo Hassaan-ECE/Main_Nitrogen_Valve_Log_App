@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Valve Log",
-  "version": "0.1.1",
-  "identifier": "com.te.lab.nitrogen-valve-log",
+  "version": "0.1.2",
+  "identifier": "valve-log",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:5173",
