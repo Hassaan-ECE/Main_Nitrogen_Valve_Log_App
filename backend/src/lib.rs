@@ -16,7 +16,7 @@ pub fn run() {
             app.manage(SharedStateWatcher::new());
             let shared_paths = shared_sync::resolve_shared_paths();
             if let Some(watcher) = app.try_state::<SharedStateWatcher>() {
-                let _ = watcher.ensure_watching(app.handle().clone(), &shared_paths.shared_root);
+                let _ = watcher.ensure_watching(app.handle().clone(), &shared_paths.shared_dir);
             }
             Ok(())
         })

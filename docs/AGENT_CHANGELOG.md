@@ -22,6 +22,29 @@ Format:
 
 ---
 
+## 2026-06-24 — v0.1.3: revert to local AppData logs, keep shared sync
+
+**What changed**
+- Logs and Excel back in `%APPDATA%\valve-log\logs\` on each PC (reverts v0.1.2 S-drive authoritative `logs\` layout).
+- Shared sync restored to v0.1.1 model: `shared\state.json` fast read, `shared\events\{client_id}\` merge, watcher on `shared\` only.
+- Kept stale shared write-lock recovery (30s) from unreleased fix.
+- Bumped to `v0.1.3`; removed `v0.1.2` release assets from repo and GitHub.
+
+**Why**
+- User prefers per-PC local logs cleared manually; S-drive authoritative logs were harder to manage safely.
+
+**How to verify**
+- `cd backend && cargo test`
+- `bun run build`
+- Install v0.1.3; confirm logs land in `%APPDATA%\valve-log\logs\`.
+- With S drive up, log on one PC and confirm another updates via shared sync.
+- GitHub `releases/latest` serves v0.1.3 only.
+
+**Follow-ups**
+- Manually clear AppData logs on PCs when resetting test data.
+
+---
+
 ## 2026-06-24 — S-drive shared sync with local-first logging
 
 **What changed**

@@ -14,7 +14,7 @@ C:\Projects\Active\PDU_Data_Automation_App
 
 ## Current Status
 
-`v0.1.2` — temporary manual open/close valve logging with S-drive authoritative logs and updater.
+`v0.1.3` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, and updater.
 
 Implemented:
 
@@ -24,7 +24,7 @@ Implemented:
 - Startup reads the latest JSONL log entry; if no valid entry exists, it assumes/shows the valve as currently open
 - PDU-style operator-name prompt with saved names, filtering, removal, blank validation, and case-insensitive dedupe
 - Rust backend commands for current-state lookup, manual close logging, manual open logging, and opening the log workbook
-- When S-drive is available, `logs\events.jsonl` and `logs\Main Nitrogen Valve Log.xlsx` on the project root are authoritative for all PCs; state/Excel always reload from those shared files (watcher on the whole project folder). `%APPDATA%\valve-log\` only stores `client_id.txt`. AppData `logs\` is fallback when S is down.
+- Logs live in `%APPDATA%\valve-log\logs\` (`events.jsonl` + `Main Nitrogen Valve Log.xlsx`) on each PC. S-drive `shared\` holds `state.json` and per-client `events\{client_id}\` for multi-machine sync (watcher on `shared\` only). Clear log data manually per PC when needed.
 
 Not implemented yet:
 
