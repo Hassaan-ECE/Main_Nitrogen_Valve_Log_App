@@ -1,0 +1,27 @@
+[package]
+name = "main-nitrogen-valve-log-app"
+version = "0.1.0"
+description = "Nitrogen valve control desktop app"
+authors = ["Syed Hassaan Shah"]
+edition = "2021"
+
+[lib]
+name = "main_nitrogen_valve_log_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+iana-time-zone = "0.1.65"
+notify = "8.0.0"
+rust_xlsxwriter = "0.92"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-updater = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+zip = "7.2"

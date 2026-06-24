@@ -1,0 +1,35 @@
+{
+  "name": "main-nitrogen-valve-log-app",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.3.14",
+  "description": "Nitrogen valve control desktop app built with Tauri, React, TypeScript, and Rust.",
+  "author": "Syed Hassaan Shah",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config frontend/vite.config.ts",
+    "desktop": "bun --cwd backend ../node_modules/@tauri-apps/cli/tauri.js dev",
+    "build": "tsc -b && vite build --config frontend/vite.config.ts",
+    "build:desktop": "bun --cwd backend ../node_modules/@tauri-apps/cli/tauri.js build --bundles nsis",
+    "tauri": "bun --cwd backend ../node_modules/@tauri-apps/cli/tauri.js"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-updater": "^2",
+    "clsx": "^2.1.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.2.4",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.9"
+  }
+}
