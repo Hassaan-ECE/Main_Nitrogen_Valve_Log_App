@@ -1,6 +1,6 @@
 [package]
 name = "main-nitrogen-valve-log-app"
-version = "0.1.0"
+version = "0.1.1"
 description = "Nitrogen valve control desktop app"
 authors = ["Syed Hassaan Shah"]
 edition = "2021"

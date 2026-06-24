@@ -28,6 +28,10 @@ import {
   idleButtonStyle,
   type ValveAction,
 } from "./stateStyles";
+import {
+  shouldShowValveUpdateButton,
+  UpdateActionButton,
+} from "./UpdateActionButton";
 import { useDesktopUpdates } from "./useDesktopUpdates";
 
 type PendingAction = ValveAction;
@@ -52,15 +56,45 @@ const actionConfig: Record<
   },
 };
 
+type SharedSyncDisplay = "connected" | "local" | "not_connected";
+
+function sharedSyncDisplayFromSnapshot(
+  snapshot: ValveStateSnapshot,
+): SharedSyncDisplay {
+  if (!snapshot.shared_available) {
+    return "not_connected";
+  }
+
+  if (snapshot.saved_locally_only) {
+    return "local";
+  }
+
+  return "connected";
+}
+
+const sharedSyncLabels: Record<SharedSyncDisplay, string> = {
+  connected: "Connected",
+  local: "Local",
+  not_connected: "Not Connected",
+};
+
+const sharedSyncColors: Record<SharedSyncDisplay, string> = {
+  connected: "text-[#6fcf97]",
+  local: "text-[#f4b1a9]",
+  not_connected: "text-[#f4b1a9]",
+};
+
 function PrimaryValveButton({
   label,
   action,
   disabled,
+  loading,
   onClick,
 }: {
   label: string;
   action: ValveAction;
   disabled: boolean;
+  loading?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -70,7 +104,7 @@ function PrimaryValveButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex min-h-0 flex-1 items-center justify-center rounded-md px-6 py-6 text-center shadow-sm transition",
+        "flex min-h-0 flex-1 items-center justify-center rounded-md px-6 py-8 text-center shadow-sm transition",
         "focus:outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-cyan-200/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#20201f]",
         !disabled &&
           "active:ring-2 active:ring-cyan-200/65 active:ring-offset-2 active:ring-offset-[#20201f]",
@@ -79,7 +113,7 @@ function PrimaryValveButton({
       )}
     >
       <span className="text-[27pt] font-bold leading-none tracking-wide">
-        {label}
+        {loading ? "Loading..." : label}
       </span>
     </button>
   );
@@ -129,10 +163,14 @@ export function ValvePanel() {
   const [isOpeningExcelLog, setIsOpeningExcelLog] = useState(false);
   const [isOpeningLogFolder, setIsOpeningLogFolder] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [sharedSyncDisplay, setSharedSyncDisplay] =
+    useState<SharedSyncDisplay | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState("0.1.0");
-  const { installAvailableUpdate, updateState } = useDesktopUpdates(appVersion);
+  const [appVersion, setAppVersion] = useState("0.1.1");
+  const { installAvailableUpdate, updateState } = useDesktopUpdates(
+    appVersion,
+    !isStateLoading,
+  );
 
   const visibleOperatorNames = useMemo(
     () => matchingOperatorNames(operatorNames, operatorFilterText),
@@ -148,7 +186,7 @@ export function ValvePanel() {
   ) {
     setValveState(snapshot.state);
     setStatusText(latestLoggedStateSummary(snapshot));
-    setSyncMessage(snapshot.sync_message?.trim() || null);
+    setSharedSyncDisplay(sharedSyncDisplayFromSnapshot(snapshot));
 
     if (!showSharedWarning) {
       return;
@@ -355,31 +393,20 @@ export function ValvePanel() {
 
   return (
     <main className="flex h-screen min-h-[400px] w-full min-w-[360px] max-w-full flex-col overflow-hidden bg-[#20201f] p-3.5 text-white">
-      <section className="px-1 py-2">
-        <div className="text-center text-[18pt] font-bold leading-none tracking-normal text-white">
-          Nitrogen Valve
-        </div>
-      </section>
-
-      <section className="mt-2 flex min-h-0 flex-1 flex-col gap-3 px-1">
+      <section className="flex min-h-0 flex-1 flex-col gap-3 px-1 pt-1">
         <PrimaryValveButton
           label={
             isStateLoading ? "Loading..." : currentActionConfig.buttonLabel
           }
           action={currentAction}
           disabled={isStateLoading || isLogging}
+          loading={isStateLoading}
           onClick={openOperatorPrompt}
         />
 
         {statusText ? (
           <p className="text-center text-[8.5pt] leading-tight text-[#d8d2c8]">
             {statusText}
-          </p>
-        ) : null}
-
-        {syncMessage ? (
-          <p className="text-center text-[7.5pt] leading-tight text-[#b7b1a8]">
-            {syncMessage}
           </p>
         ) : null}
 
@@ -414,22 +441,36 @@ export function ValvePanel() {
 
       <footer className="mt-2 border-t border-[#454542] pt-2 text-[7.5pt] leading-tight text-[#d8d2c8]">
         <div className="flex items-center justify-between gap-3">
-          <span>
-            v{appVersion}
-            {updateState.available && updateState.latestVersion ? (
-              <>
-                {" "}
-                <button
-                  type="button"
+          <span className="flex min-w-0 items-center">
+            <span className="truncate">
+              v{appVersion}
+              {sharedSyncDisplay ? (
+                <>
+                  {" "}
+                  -{" "}
+                  <span
+                    className={cn(
+                      "font-medium",
+                      sharedSyncColors[sharedSyncDisplay],
+                    )}
+                  >
+                    {sharedSyncLabels[sharedSyncDisplay]}
+                  </span>
+                </>
+              ) : null}
+            </span>
+            {shouldShowValveUpdateButton(updateState) ? (
+              <span className="ml-2 shrink-0">
+                <UpdateActionButton
+                  state={updateState}
                   onClick={() => void installAvailableUpdate()}
-                  className="font-medium text-cyan-200/90 underline-offset-2 hover:underline"
-                >
-                  Update {updateState.latestVersion}
-                </button>
-              </>
+                />
+              </span>
             ) : null}
           </span>
-          <span className="font-medium">Built by Syed Hassaan Shah</span>
+          <span className="shrink-0 font-medium">
+            Built by Syed Hassaan Shah
+          </span>
         </div>
       </footer>
 

@@ -191,6 +191,31 @@ pub fn log_valve_opened(
 }
 
 pub fn open_valve_log(app: &tauri::AppHandle) -> Result<String, ValveLogError> {
+    let local_paths = prepare_workbook(app)?;
+
+    open_path_with_default_app(&local_paths.workbook_path).map_err(|error| {
+        ValveLogError::new("open_log_failed", "The Excel log could not be opened.")
+            .with_detail(error)
+    })?;
+
+    Ok(local_paths.workbook_path.display().to_string())
+}
+
+pub fn open_valve_log_folder(app: &tauri::AppHandle) -> Result<String, ValveLogError> {
+    let local_paths = prepare_workbook(app)?;
+
+    open_folder_with_default_app(&local_paths.log_dir).map_err(|error| {
+        ValveLogError::new(
+            "open_log_folder_failed",
+            "The log folder could not be opened.",
+        )
+        .with_detail(error)
+    })?;
+
+    Ok(local_paths.log_dir.display().to_string())
+}
+
+fn prepare_workbook(app: &tauri::AppHandle) -> Result<LocalLogPaths, ValveLogError> {
     let local_paths = local_log_paths(app)?;
     let shared_paths = shared_sync::resolve_shared_paths();
 
@@ -205,28 +230,7 @@ pub fn open_valve_log(app: &tauri::AppHandle) -> Result<String, ValveLogError> {
         .with_detail(error)
     })?;
 
-    open_path_with_default_app(&local_paths.workbook_path).map_err(|error| {
-        ValveLogError::new("open_log_failed", "The Excel log could not be opened.")
-            .with_detail(error)
-    })?;
-
-    Ok(local_paths.workbook_path.display().to_string())
-}
-
-pub fn open_valve_log_folder(app: &tauri::AppHandle) -> Result<String, ValveLogError> {
-    let local_paths = local_log_paths(app)?;
-
-    ensure_log_directory(&local_paths)?;
-
-    open_folder_with_default_app(&local_paths.log_dir).map_err(|error| {
-        ValveLogError::new(
-            "open_log_folder_failed",
-            "The log folder could not be opened.",
-        )
-        .with_detail(error)
-    })?;
-
-    Ok(local_paths.log_dir.display().to_string())
+    Ok(local_paths)
 }
 
 fn ensure_log_directory(paths: &LocalLogPaths) -> Result<(), ValveLogError> {
@@ -937,6 +941,19 @@ mod tests {
 
         assert!(paths.workbook_path.exists());
         assert!(fs::metadata(paths.workbook_path).expect("metadata").len() > 0);
+    }
+
+    #[test]
+    fn empty_workbook_is_created_with_headers_only() {
+        let paths = test_paths();
+        fs::create_dir_all(&paths.log_dir).expect("create test dir");
+
+        write_workbook(&paths.workbook_path, &[]).expect("write workbook");
+
+        assert!(paths.workbook_path.exists());
+        let shared_strings = workbook_shared_strings(&paths.workbook_path);
+        assert!(shared_strings.contains("Timestamp"));
+        assert!(shared_strings.contains("Operator"));
     }
 
     #[test]

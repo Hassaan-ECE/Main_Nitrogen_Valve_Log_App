@@ -6,9 +6,8 @@ import { isTauriRuntime } from "@/integrations/tauri/runtime";
 import { buildIdleUpdateState, type UpdateState } from "./updateTypes";
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60_000;
-const INITIAL_UPDATE_CHECK_DELAY_MS = 1_500;
 
-export function useDesktopUpdates(currentVersion: string) {
+export function useDesktopUpdates(currentVersion: string, appReady: boolean) {
   const [updateState, setUpdateState] = useState<UpdateState>(() =>
     buildIdleUpdateState(currentVersion),
   );
@@ -112,7 +111,7 @@ export function useDesktopUpdates(currentVersion: string) {
   }, []);
 
   useEffect(() => {
-    if (!isTauriRuntime()) {
+    if (!isTauriRuntime() || !appReady) {
       return undefined;
     }
 
@@ -125,17 +124,16 @@ export function useDesktopUpdates(currentVersion: string) {
       });
     };
 
-    const initialTimeoutId = window.setTimeout(runCheck, INITIAL_UPDATE_CHECK_DELAY_MS);
+    runCheck();
     const intervalId = window.setInterval(runCheck, UPDATE_CHECK_INTERVAL_MS);
 
     return () => {
       active = false;
-      window.clearTimeout(initialTimeoutId);
       window.clearInterval(intervalId);
       pendingUpdateRef.current?.close().catch(() => undefined);
       pendingUpdateRef.current = null;
     };
-  }, [checkForUpdate]);
+  }, [appReady, checkForUpdate]);
 
   return {
     installAvailableUpdate,
