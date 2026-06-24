@@ -8,7 +8,7 @@ This project reuses the same stack and visual design as the [PDU Data Automation
 
 ## Status
 
-`v0.1.0` — temporary manual open/close valve logging.
+`v0.1.5` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, updater, and shared-first connected-mode saves.
 
 Implemented now:
 
@@ -17,8 +17,10 @@ Implemented now:
 - One large alternating **Close Valve** / **Open Valve** button
 - Startup state loaded from the latest JSONL log entry; if no valid entry exists, the app assumes the valve is open
 - PDU-style operator-name prompt with saved names, filtering, removal, blank-name validation, and case-insensitive dedupe
-- Durable JSONL source log for open and close events
-- Generated Excel workbook that can be opened from the app
+- Local AppData JSONL source log for open and close events
+- S-drive shared sync through compact `shared\state.json` plus per-client shared event files
+- Generated local Excel workbook that can be opened from the app
+- Quiet updater through the GitHub latest release
 
 Not implemented yet:
 
@@ -84,16 +86,24 @@ Saved operator names are stored only in browser localStorage under `nitrogenValv
 
 ## Log files
 
-Default location:
+Local per-PC location:
 
 ```text
-%USERPROFILE%\Documents\Main Nitrogen Valve Log\
+%APPDATA%\valve-log\logs\
 ```
 
 Files:
 
-- `Main Nitrogen Valve Log.jsonl` - durable source of open/close events
+- `events.jsonl` - local source/cache of open/close events
 - `Main Nitrogen Valve Log.xlsx` - operator-facing Excel workbook generated from the JSONL source
+
+Shared sync lives under:
+
+```text
+S:\Engineering\Public\Syed_Hassaan_Shah\Main_Nitrogen_Valve_Log_App\shared\
+```
+
+When the S-drive shared root is available, the app writes the shared event/state first, then updates the local JSONL cache. If the shared save fails, the local button should not flip by itself.
 
 If Excel has the workbook open and locked, the app saves the JSONL event first and then reports that the workbook could not be refreshed. Close Excel and use **Open Log** again to regenerate/open the workbook.
 

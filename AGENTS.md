@@ -14,7 +14,7 @@ C:\Projects\Active\PDU_Data_Automation_App
 
 ## Current Status
 
-`v0.1.4` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, updater, and one-time v0.1.4 local-log reset migration.
+`v0.1.5` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, updater, one-time v0.1.4 local-log reset migration, and shared-first connected-mode saves.
 
 Implemented:
 

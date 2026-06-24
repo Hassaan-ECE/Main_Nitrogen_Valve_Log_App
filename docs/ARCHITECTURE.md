@@ -174,6 +174,8 @@ Important cases:
 - `blank_operator_name` - no event is written.
 - `source_log_write_failed` - no event is written.
 - `invalid_transition` - duplicate or stale open/close attempt; no event is written.
+- `shared_sync_failed` during connected-mode logging - no local event is written unless the shared event and shared state were committed first.
+- `local_log_write_failed` during connected-mode logging - shared sync already saved the event, but this PC's local JSONL cache could not be updated; the frontend can still update from the saved shared event.
 - `excel_refresh_failed` during open/close - JSONL may already be saved; the frontend updates the displayed state when the backend includes the saved entry.
 - `excel_refresh_failed` during Open Log - close Excel and retry.
 - `open_log_failed` - workbook refresh succeeded but the system default app could not open it.

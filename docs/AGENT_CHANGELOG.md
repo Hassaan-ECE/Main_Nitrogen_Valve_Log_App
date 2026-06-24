@@ -22,6 +22,28 @@ Format:
 
 ---
 
+## 2026-06-24 — v0.1.5: shared save failure no longer flips local state
+
+**What changed**
+- Bumped app metadata to `v0.1.5` for a replacement release.
+- Changed connected-mode valve logging so the backend publishes to the shared `events\{client_id}\` file and shared `state.json` before appending the event to this PC's local JSONL cache.
+- Added a regression test that forces a shared write failure after event preparation and confirms the local source log is not written.
+- Added a `local_log_write_failed` saved-entry error path for the rare case where shared sync succeeds but this PC cannot update its local cache.
+
+**Why**
+- A failed shared write could previously leave a local-only JSONL event behind even though the UI showed "The event could not be saved to the shared valve log." That made the initiating PC's button flip after closing the prompt while other PCs stayed unchanged.
+
+**How to verify**
+- `cd backend && cargo check`
+- `cd backend && cargo test`
+- `bun run build`
+- Note: `cargo fmt --check` still reports pre-existing formatting differences in `backend/src/shared_sync.rs`; only `backend/src/valve_log.rs` was formatted to keep this fix scoped.
+
+**Follow-ups**
+- Publish `v0.1.5` and remove old broken release artifacts.
+- On the lab PCs, retry the failing save and confirm that a shared-save error no longer changes only one machine's local button state.
+- If the footer still says Connected while saves fail, inspect S-drive write permissions for `shared\events\` and `shared\state.json`.
+
 ## 2026-06-24 — v0.1.4: one-time local log reset on update
 
 **What changed**

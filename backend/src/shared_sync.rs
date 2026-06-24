@@ -229,11 +229,7 @@ where
         compute_merged_snapshot(&local_entries, paths).map_err(SharedSyncError::Message)?;
     write_shared_state(paths, &snapshot).map_err(SharedSyncError::Message)?;
 
-    let _ = enrich_snapshot(
-        snapshot,
-        paths,
-        Some(entry.logged_at_local.clone()),
-    );
+    let _ = enrich_snapshot(snapshot, paths, Some(entry.logged_at_local.clone()));
 
     Ok((entry, local_entries))
 }
@@ -833,4 +829,3 @@ mod tests {
         let _ = fs::remove_dir_all(temp_root);
     }
 }
-

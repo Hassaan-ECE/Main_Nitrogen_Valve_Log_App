@@ -281,33 +281,33 @@ fn log_valve_action_at_paths(
     }
 
     let source_log_path = local_paths.source_log_path.clone();
-    let (entry, merged_local_entries) =
+    let (entry, mut local_entries) =
         shared_sync::commit_shared_valve_event(&shared_paths, &local_paths.client_id, || {
-            let local_entries = read_valid_source_entries(&source_log_path).map_err(|error| {
-                shared_sync::SharedSyncError::Message(error.message.to_string())
-            })?;
-            let snapshot = shared_sync::compute_merged_snapshot(&local_entries, &shared_paths)
-                .map_err(|error| shared_sync::SharedSyncError::Message(error))?;
-            validate_transition(action, &snapshot).map_err(|error| {
-                shared_sync::SharedSyncError::Message(error.message.to_string())
-            })?;
-
-            let entry = entry_for_action(action, operator_name.clone());
-            append_source_entry(&source_log_path, &entry)
-                .map_err(|error| shared_sync::SharedSyncError::Message(error))?;
-
-            let mut merged_local_entries = local_entries;
-            merged_local_entries.push(entry.clone());
-            Ok((entry, merged_local_entries))
+            prepare_shared_valve_event(
+                &source_log_path,
+                &shared_paths,
+                action,
+                operator_name.clone(),
+            )
         })
         .map_err(map_shared_sync_error)?;
+
+    append_source_entry(&source_log_path, &entry).map_err(|error| {
+        ValveLogError::new(
+            "local_log_write_failed",
+            "The event was saved to the shared valve log, but this PC's local log could not be updated.",
+        )
+        .with_detail(error)
+        .with_saved_entry(entry.clone())
+    })?;
+    local_entries.push(entry.clone());
 
     if let Some(watcher) = app.try_state::<crate::shared_watcher::SharedStateWatcher>() {
         let _ = watcher.ensure_watching(app.clone(), &shared_paths.shared_dir);
     }
     let _ = app.emit(crate::shared_watcher::VALVE_LOG_CHANGED_EVENT, ());
 
-    refresh_workbook(&local_paths.workbook_path, &merged_local_entries)
+    refresh_workbook(&local_paths.workbook_path, &local_entries)
         .map(|()| entry.clone())
         .map_err(|error| {
             ValveLogError::new(
@@ -317,6 +317,22 @@ fn log_valve_action_at_paths(
             .with_detail(error)
             .with_saved_entry(entry)
         })
+}
+
+fn prepare_shared_valve_event(
+    source_log_path: &Path,
+    shared_paths: &SharedSyncPaths,
+    action: ValveAction,
+    operator_name: String,
+) -> Result<(ValveLogEntry, Vec<ValveLogEntry>), shared_sync::SharedSyncError> {
+    let local_entries = read_valid_source_entries(source_log_path)
+        .map_err(|error| shared_sync::SharedSyncError::Message(error.message.to_string()))?;
+    let snapshot = shared_sync::compute_merged_snapshot(&local_entries, shared_paths)
+        .map_err(shared_sync::SharedSyncError::Message)?;
+    validate_transition(action, &snapshot)
+        .map_err(|error| shared_sync::SharedSyncError::Message(error.message.to_string()))?;
+
+    Ok((entry_for_action(action, operator_name), local_entries))
 }
 
 fn map_shared_sync_error(error: shared_sync::SharedSyncError) -> ValveLogError {
@@ -741,6 +757,18 @@ mod tests {
         }
     }
 
+    fn test_shared_paths(root: PathBuf) -> SharedSyncPaths {
+        let shared_dir = root.join("shared");
+
+        SharedSyncPaths {
+            shared_root: root,
+            shared_dir: shared_dir.clone(),
+            state_path: shared_dir.join("state.json"),
+            events_dir: shared_dir.join("events"),
+            lock_path: shared_dir.join(".lock"),
+        }
+    }
+
     fn log_valve_action_local_only(
         paths: &LocalLogPaths,
         action: ValveAction,
@@ -859,6 +887,34 @@ mod tests {
         let entries = read_source_entries(&paths.source_log_path).expect("read entries");
 
         assert_eq!(entries, vec![entry]);
+    }
+
+    #[test]
+    fn failed_shared_commit_does_not_write_local_source_log() {
+        let local_paths = test_paths();
+        let shared_paths = test_shared_paths(temp_log_dir());
+        fs::create_dir_all(&shared_paths.events_dir).expect("shared events dir");
+        fs::write(
+            shared_paths.events_dir.join(&local_paths.client_id),
+            b"not a directory",
+        )
+        .expect("client path collision");
+
+        let result =
+            shared_sync::commit_shared_valve_event(&shared_paths, &local_paths.client_id, || {
+                prepare_shared_valve_event(
+                    &local_paths.source_log_path,
+                    &shared_paths,
+                    ValveAction::Close,
+                    "Sean".to_string(),
+                )
+            });
+
+        assert!(result.is_err());
+        assert!(!local_paths.source_log_path.exists());
+
+        let _ = fs::remove_dir_all(&shared_paths.shared_root);
+        let _ = fs::remove_dir_all(&local_paths.log_dir);
     }
 
     #[test]
