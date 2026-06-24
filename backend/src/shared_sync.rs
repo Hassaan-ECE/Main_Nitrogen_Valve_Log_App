@@ -26,7 +26,8 @@ const OPEN_STATE: &str = "Open";
 const CLOSED_STATE: &str = "Closed";
 const MANUAL_SOURCE: &str = "Manual";
 const LOCK_RETRY_INTERVAL_MS: u64 = 50;
-const LOCK_MAX_WAIT_MS: u64 = 2_000;
+const LOCK_MAX_WAIT_MS: u64 = 5_000;
+const LOCK_STALE_AFTER_MS: u64 = 30_000;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SharedSyncPaths {
@@ -102,7 +103,7 @@ struct SharedWriteLock {
 
 impl Drop for SharedWriteLock {
     fn drop(&mut self) {
-        let _ = fs::remove_dir(&self.lock_path);
+        let _ = fs::remove_dir_all(&self.lock_path);
     }
 }
 
@@ -235,6 +236,33 @@ where
     Ok((entry, local_entries))
 }
 
+fn lock_stale_after_ms() -> u64 {
+    if cfg!(test) {
+        1
+    } else {
+        LOCK_STALE_AFTER_MS
+    }
+}
+
+fn shared_write_lock_is_stale(lock_path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(lock_path) else {
+        return false;
+    };
+
+    let Ok(timestamp) = metadata.modified().or_else(|_| metadata.created()) else {
+        return true;
+    };
+    let Ok(age) = timestamp.elapsed() else {
+        return true;
+    };
+
+    age.as_millis() > lock_stale_after_ms() as u128
+}
+
+fn clear_shared_write_lock(lock_path: &Path) {
+    let _ = fs::remove_dir_all(lock_path);
+}
+
 fn acquire_shared_write_lock(lock_path: &Path) -> Result<SharedWriteLock, SharedSyncError> {
     let started = Instant::now();
 
@@ -246,6 +274,11 @@ fn acquire_shared_write_lock(lock_path: &Path) -> Result<SharedWriteLock, Shared
                 });
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if shared_write_lock_is_stale(lock_path) {
+                    clear_shared_write_lock(lock_path);
+                    continue;
+                }
+
                 if started.elapsed() >= Duration::from_millis(LOCK_MAX_WAIT_MS) {
                     return Err(SharedSyncError::Busy);
                 }
@@ -780,6 +813,20 @@ mod tests {
             let _first = acquire_shared_write_lock(&paths.lock_path).expect("first lock");
         }
         let _second = acquire_shared_write_lock(&paths.lock_path).expect("second lock");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn stale_shared_write_lock_is_recovered() {
+        let temp_root = std::env::temp_dir().join(format!("valve-lock-test-{}", Uuid::new_v4()));
+        let paths = test_paths(temp_root.clone());
+        fs::create_dir_all(&paths.shared_dir).expect("shared dir");
+        fs::create_dir(&paths.lock_path).expect("stale lock");
+
+        thread::sleep(Duration::from_millis(5));
+
+        let _lock = acquire_shared_write_lock(&paths.lock_path).expect("recovered lock");
 
         let _ = fs::remove_dir_all(temp_root);
     }
