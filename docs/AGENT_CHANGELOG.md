@@ -22,6 +22,25 @@ Format:
 
 ---
 
+## 2026-06-24 — v0.1.6: restore v0.1.1 shared sync save path
+
+**What changed**
+- Reverted connected-mode logging to v0.1.1: local JSONL append happens inside `commit_shared_valve_event` under the shared write lock.
+- Removed `migrations.rs` and the v0.1.4 one-time local log wipe.
+- Kept stale shared write-lock recovery from v0.1.3+.
+- Released v0.1.6; replaces v0.1.5.
+
+**Why**
+- v0.1.5's shared-first / local-after save path broke multi-PC sync behavior the user had working in v0.1.1.
+
+**How to verify**
+- `cd backend && cargo test`
+- `bun run build`
+- Two PCs on v0.1.6: log close on one, confirm the other updates within ~500ms.
+- Confirm `shared\state.json` and a new file under `shared\events\{client_id}\` after logging.
+
+---
+
 ## 2026-06-24 — v0.1.5: shared save failure no longer flips local state
 
 **What changed**

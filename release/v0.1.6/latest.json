@@ -1,0 +1,11 @@
+{
+  "version": "0.1.6",
+  "notes": "Restore v0.1.1 shared sync: local JSONL written inside the shared write lock again. Removes v0.1.4 local-log wipe migration. Keeps stale lock recovery.",
+  "pub_date": "2026-06-24T23:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUa3BaMGFrd2E3dUFIZ2Z0MjhpSjdodStLYXBMcjBUL0JMQTEydTJMZFRvazcrZVpTVlhiT1gvUkFDTGErczlJWFZrSWgreUR4NjcxbGRwM2JVRWV6Z25URU5yNGh2UWdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyMzMzNzUwCWZpbGU6VmFsdmUgTG9nXzAuMS42X3g2NC1zZXR1cC5leGUKSYWxIMWJNaHhNT1llN1lsdkZMK29aNUtWOVNWei84T2xHdjNJZjBaVjFjaXNTNFdpSStLVy9PNElJVXZtR2VMOE02ek1qektUdS82WEFYWGIySVRFQXc9PQo=",
+      "url": "https://github.com/Hassaan-ECE/Main_Nitrogen_Valve_Log_App/releases/download/v0.1.6/Valve.Log_0.1.6_x64-setup.exe"
+    }
+  }
+}

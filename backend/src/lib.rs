@@ -1,5 +1,4 @@
 mod commands;
-mod migrations;
 mod model;
 mod shared_sync;
 mod shared_watcher;
@@ -14,7 +13,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            migrations::run_startup_migrations(app.handle());
             app.manage(SharedStateWatcher::new());
             let shared_paths = shared_sync::resolve_shared_paths();
             if let Some(watcher) = app.try_state::<SharedStateWatcher>() {
