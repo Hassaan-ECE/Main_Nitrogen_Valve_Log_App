@@ -7,6 +7,9 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime},
 };
+
+const ATOMIC_WRITE_RETRIES: u32 = 8;
+const ATOMIC_WRITE_RETRY_DELAY_MS: u64 = 75;
 use uuid::Uuid;
 
 use crate::model::{ValveLogEntry, ValveStateSnapshot};
@@ -185,16 +188,21 @@ pub(crate) fn load_fast_snapshot(
     local_entries: &[ValveLogEntry],
     paths: &SharedSyncPaths,
 ) -> Result<ValveStateSnapshot, String> {
-    let shared_available = shared_root_available(paths);
+    let merged = compute_merged_snapshot(local_entries, paths)?;
 
-    if shared_available {
-        if let Ok(snapshot) = read_shared_state(paths) {
-            let last_shared_update = snapshot.last_shared_update.clone();
-            return Ok(enrich_snapshot(snapshot, paths, last_shared_update));
+    if !shared_root_available(paths) {
+        return Ok(merged);
+    }
+
+    if let Ok(cached) = read_shared_state(paths) {
+        if snapshots_match_for_read(&cached, &merged) {
+            let last_shared_update = cached.last_shared_update.clone();
+            return Ok(enrich_snapshot(cached, paths, last_shared_update));
         }
     }
 
-    load_merged_snapshot(local_entries, paths)
+    let _ = write_shared_state(paths, &merged);
+    Ok(merged)
 }
 
 pub(crate) fn commit_shared_valve_event<F>(
@@ -227,7 +235,9 @@ where
 
     let snapshot =
         compute_merged_snapshot(&local_entries, paths).map_err(SharedSyncError::Message)?;
-    write_shared_state(paths, &snapshot).map_err(SharedSyncError::Message)?;
+    if let Err(error) = write_shared_state(paths, &snapshot) {
+        eprintln!("Valve Log: shared state.json refresh failed after event save: {error}");
+    }
 
     let _ = enrich_snapshot(snapshot, paths, Some(entry.logged_at_local.clone()));
 
@@ -642,6 +652,13 @@ fn parse_logged_at(value: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(value.trim(), "%Y-%m-%d %H:%M:%S").unwrap_or_default()
 }
 
+fn snapshots_match_for_read(cached: &ValveStateSnapshot, merged: &ValveStateSnapshot) -> bool {
+    cached.state == merged.state
+        && cached.assumed == merged.assumed
+        && cached.last_entry.as_ref().map(|entry| entry.id.as_str())
+            == merged.last_entry.as_ref().map(|entry| entry.id.as_str())
+}
+
 fn unique_event_path(events_dir: &Path, client_id: &str) -> PathBuf {
     let client_dir = events_dir.join(client_id);
     let millis = SystemTime::now()
@@ -656,18 +673,107 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
 
-    let temp_path = path.with_extension("tmp");
+    cleanup_stale_temp_files(path);
+
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("file");
+    let temp_path = path.with_file_name(format!("{file_name}.tmp-{}", Uuid::new_v4()));
+
     {
         let mut file = fs::File::create(&temp_path).map_err(|error| error.to_string())?;
         file.write_all(bytes).map_err(|error| error.to_string())?;
         file.flush().map_err(|error| error.to_string())?;
     }
 
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| error.to_string())?;
+    for attempt in 0..ATOMIC_WRITE_RETRIES {
+        if path.exists() {
+            match fs::remove_file(path) {
+                Ok(()) => break,
+                Err(error) if attempt + 1 == ATOMIC_WRITE_RETRIES => {
+                    return try_copy_atomic_replace(path, &temp_path, bytes, error);
+                }
+                Err(_) => {
+                    thread::sleep(Duration::from_millis(
+                        ATOMIC_WRITE_RETRY_DELAY_MS * (attempt as u64 + 1),
+                    ));
+                }
+            }
+        } else {
+            break;
+        }
     }
 
-    fs::rename(&temp_path, path).map_err(|error| error.to_string())
+    match fs::rename(&temp_path, path) {
+        Ok(()) => Ok(()),
+        Err(error) => try_copy_atomic_replace(path, &temp_path, bytes, error),
+    }
+}
+
+fn try_copy_atomic_replace(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+    source_error: impl std::fmt::Display,
+) -> Result<(), String> {
+    for attempt in 0..ATOMIC_WRITE_RETRIES {
+        match write_direct(path, bytes) {
+            Ok(()) => {
+                let _ = fs::remove_file(temp_path);
+                return Ok(());
+            }
+            Err(error) if attempt + 1 == ATOMIC_WRITE_RETRIES => {
+                let _ = fs::remove_file(temp_path);
+                return Err(format!("{source_error}; direct write failed: {error}"));
+            }
+            Err(_) => {
+                thread::sleep(Duration::from_millis(
+                    ATOMIC_WRITE_RETRY_DELAY_MS * (attempt as u64 + 1),
+                ));
+            }
+        }
+    }
+
+    Err(source_error.to_string())
+}
+
+fn write_direct(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+    file.write_all(bytes).map_err(|error| error.to_string())?;
+    file.flush().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn cleanup_stale_temp_files(path: &Path) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+        return;
+    };
+    let legacy_temp = path.with_extension("tmp");
+    let _ = fs::remove_file(legacy_temp);
+
+    let prefix = format!("{file_name}.tmp-");
+    let Ok(read_dir) = fs::read_dir(parent) else {
+        return;
+    };
+
+    for item in read_dir.flatten() {
+        let file_name = item.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        if name.starts_with(&prefix) {
+            let _ = fs::remove_file(item.path());
+        }
+    }
 }
 
 impl LoggedValveState {

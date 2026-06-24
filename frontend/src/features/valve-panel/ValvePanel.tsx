@@ -166,7 +166,7 @@ export function ValvePanel() {
   const [sharedSyncDisplay, setSharedSyncDisplay] =
     useState<SharedSyncDisplay | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState("0.1.6");
+  const [appVersion, setAppVersion] = useState("0.1.7");
   const { installAvailableUpdate, updateState } = useDesktopUpdates(
     appVersion,
     !isStateLoading,
@@ -356,8 +356,11 @@ export function ValvePanel() {
         return;
       }
 
-      setOperatorNameError(valveLogError.message);
-      setErrorText(valveLogError.message);
+      const errorMessage = valveLogError.detail
+        ? `${valveLogError.message} ${valveLogError.detail}`
+        : valveLogError.message;
+      setOperatorNameError(errorMessage);
+      setErrorText(errorMessage);
     } finally {
       setIsLogging(false);
     }
