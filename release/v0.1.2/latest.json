@@ -1,0 +1,11 @@
+{
+  "version": "0.1.2",
+  "notes": "S-drive authoritative logs, valve-log AppData identity, footer update button, shared-folder sync for admin fresh starts. Replaces all prior releases.",
+  "pub_date": "2026-06-24T20:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUa3BaMGFrd2E3dURSS3ZSNWJob3pjTGtuQXZNQmtWUk9NNEgzaE82UHQ3WGFPcEdxS2dnZS9nWG9VNWl1MUJGVEIrTlg1cnlLWXBtd0R2Wm8yejFHcU5nQU1hMzVSZ1E4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyMzI4Njc3CWZpbGU6VmFsdmUgTG9nXzAuMS4yX3g2NC1zZXR1cC5leGUKcElvL09qR1hUSjNISW9QL2w5S0NaVG5oaDh6bnh1Mm1KYXJXYnR5YkRkb005ZDlJbHpEeE9YNDRjNkw0TXNxRERmVHRqZFdjRERtanRxR3hPS3VwREE9PQo=",
+      "url": "https://github.com/Hassaan-ECE/Main_Nitrogen_Valve_Log_App/releases/download/v0.1.2/Valve.Log_0.1.2_x64-setup.exe"
+    }
+  }
+}
