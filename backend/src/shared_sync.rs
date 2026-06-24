@@ -1,6 +1,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     env, fmt, fs,
     io::Write,
     path::{Path, PathBuf},
@@ -127,6 +128,20 @@ pub(crate) fn shared_root_available(paths: &SharedSyncPaths) -> bool {
     paths.shared_root.exists()
 }
 
+pub(crate) fn shared_event_store_is_empty(paths: &SharedSyncPaths) -> Result<bool, String> {
+    if !shared_root_available(paths) || !paths.events_dir.exists() {
+        return Ok(true);
+    }
+
+    event_dir_is_empty(&paths.events_dir)
+}
+
+pub(crate) fn load_shared_event_entries(
+    paths: &SharedSyncPaths,
+) -> Result<Vec<ValveLogEntry>, String> {
+    load_shared_events(&paths.events_dir)
+}
+
 pub(crate) fn client_id(app_data_dir: &Path) -> Result<String, String> {
     fs::create_dir_all(app_data_dir).map_err(|error| error.to_string())?;
     let client_id_path = app_data_dir.join(CLIENT_ID_FILE_NAME);
@@ -169,19 +184,6 @@ pub(crate) fn compute_merged_snapshot(
         paths,
         None,
     ))
-}
-
-pub(crate) fn load_merged_snapshot(
-    local_entries: &[ValveLogEntry],
-    paths: &SharedSyncPaths,
-) -> Result<ValveStateSnapshot, String> {
-    let snapshot = compute_merged_snapshot(local_entries, paths)?;
-
-    if shared_root_available(paths) {
-        let _ = write_shared_state(paths, &snapshot);
-    }
-
-    Ok(snapshot)
 }
 
 pub(crate) fn load_fast_snapshot(
@@ -233,15 +235,68 @@ where
         .map_err(|error| SharedSyncError::Message(error.to_string()))?;
     write_atomic(&event_path, &payload).map_err(SharedSyncError::Message)?;
 
-    let snapshot =
-        compute_merged_snapshot(&local_entries, paths).map_err(SharedSyncError::Message)?;
+    let merged_entries =
+        merged_canonical_entries(&local_entries, paths).map_err(SharedSyncError::Message)?;
+    let snapshot = enrich_snapshot(
+        snapshot_from_canonical(&merged_entries),
+        paths,
+        Some(entry.logged_at_local.clone()),
+    );
     if let Err(error) = write_shared_state(paths, &snapshot) {
         eprintln!("Valve Log: shared state.json refresh failed after event save: {error}");
     }
 
-    let _ = enrich_snapshot(snapshot, paths, Some(entry.logged_at_local.clone()));
+    Ok((entry, merged_entries))
+}
 
-    Ok((entry, local_entries))
+pub(crate) fn restore_shared_events_from_local_entries(
+    paths: &SharedSyncPaths,
+    client_id: &str,
+    local_entries: &[ValveLogEntry],
+) -> Result<usize, SharedSyncError> {
+    if !shared_root_available(paths) {
+        return Err(SharedSyncError::Message(
+            "Shared sync root is unavailable.".to_string(),
+        ));
+    }
+
+    fs::create_dir_all(&paths.shared_dir)
+        .map_err(|error| SharedSyncError::Message(error.to_string()))?;
+    fs::create_dir_all(&paths.events_dir)
+        .map_err(|error| SharedSyncError::Message(error.to_string()))?;
+
+    let _lock = acquire_shared_write_lock(&paths.lock_path)?;
+    let shared_entries = load_shared_events(&paths.events_dir).map_err(SharedSyncError::Message)?;
+    let mut shared_ids = shared_entries
+        .iter()
+        .map(|entry| entry.id.clone())
+        .collect::<HashSet<_>>();
+    let mut restored_count = 0;
+
+    for entry in local_entries {
+        if LoggedValveState::from_new_state(&entry.new_state).is_none()
+            || shared_ids.contains(&entry.id)
+        {
+            continue;
+        }
+
+        let event_path = restored_event_path(&paths.events_dir, client_id, entry);
+        let compact = compact_from_entry(entry);
+        let payload = serde_json::to_vec(&compact)
+            .map_err(|error| SharedSyncError::Message(error.to_string()))?;
+        write_atomic(&event_path, &payload).map_err(SharedSyncError::Message)?;
+        shared_ids.insert(entry.id.clone());
+        restored_count += 1;
+    }
+
+    let merged_entries =
+        merged_canonical_entries(local_entries, paths).map_err(SharedSyncError::Message)?;
+    let snapshot = enrich_snapshot(snapshot_from_canonical(&merged_entries), paths, None);
+    if let Err(error) = write_shared_state(paths, &snapshot) {
+        eprintln!("Valve Log: shared state.json refresh failed after local restore: {error}");
+    }
+
+    Ok(restored_count)
 }
 
 fn lock_stale_after_ms() -> u64 {
@@ -382,6 +437,28 @@ fn collect_event_files(dir: &Path, entries: &mut Vec<ValveLogEntry>) -> Result<(
     }
 
     Ok(())
+}
+
+fn event_dir_is_empty(dir: &Path) -> Result<bool, String> {
+    let read_dir = fs::read_dir(dir).map_err(|error| error.to_string())?;
+
+    for item in read_dir {
+        let item = item.map_err(|error| error.to_string())?;
+        let path = item.path();
+
+        if path.is_dir() {
+            if !event_dir_is_empty(&path)? {
+                return Ok(false);
+            }
+            continue;
+        }
+
+        if path.extension().and_then(|value| value.to_str()) == Some("json") {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
 }
 
 fn merge_canonical_entries(entries: Vec<ValveLogEntry>) -> Vec<ValveLogEntry> {
@@ -668,6 +745,22 @@ fn unique_event_path(events_dir: &Path, client_id: &str) -> PathBuf {
     client_dir.join(format!("{millis}.json"))
 }
 
+fn restored_event_path(events_dir: &Path, client_id: &str, entry: &ValveLogEntry) -> PathBuf {
+    let client_dir = events_dir.join(client_id);
+    let mut file_stem = entry
+        .id
+        .chars()
+        .filter(|value| value.is_ascii_alphanumeric() || matches!(value, '-' | '_'))
+        .take(80)
+        .collect::<String>();
+
+    if file_stem.is_empty() {
+        file_stem = Uuid::new_v4().to_string();
+    }
+
+    client_dir.join(format!("{file_stem}.json"))
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -875,6 +968,76 @@ mod tests {
         assert_eq!(restored.action, CLOSE_ACTION);
         assert_eq!(restored.operator_name, "Sean");
         assert_eq!(restored.logged_at_utc, original.logged_at_utc);
+    }
+
+    #[test]
+    fn missing_shared_events_dir_is_empty_event_store() {
+        let temp_root = std::env::temp_dir().join(format!("valve-shared-test-{}", Uuid::new_v4()));
+        let paths = test_paths(temp_root.clone());
+        fs::create_dir_all(&paths.shared_root).expect("shared root");
+
+        assert!(shared_event_store_is_empty(&paths).expect("empty shared events"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn nested_shared_event_file_is_not_empty_event_store() {
+        let temp_root = std::env::temp_dir().join(format!("valve-shared-test-{}", Uuid::new_v4()));
+        let paths = test_paths(temp_root.clone());
+        let client_dir = paths.events_dir.join("client-1");
+        fs::create_dir_all(&client_dir).expect("client event dir");
+        fs::write(client_dir.join("1.json"), b"{}").expect("event file");
+
+        assert!(!shared_event_store_is_empty(&paths).expect("non-empty shared events"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn restore_shared_events_from_local_entries_writes_missing_events() {
+        let temp_root = std::env::temp_dir().join(format!("valve-shared-test-{}", Uuid::new_v4()));
+        let paths = test_paths(temp_root.clone());
+        fs::create_dir_all(&paths.shared_root).expect("shared root");
+        let local_entries = vec![
+            entry(CLOSE_ACTION, CLOSED_STATE, "2026-06-24 17:00:00", "Sean"),
+            entry(OPEN_ACTION, OPEN_STATE, "2026-06-25 08:00:00", "Long"),
+        ];
+
+        let restored = restore_shared_events_from_local_entries(&paths, "client-1", &local_entries)
+            .expect("restore");
+        let shared_entries = load_shared_events(&paths.events_dir).expect("shared entries");
+
+        assert_eq!(restored, 2);
+        assert_eq!(shared_entries.len(), 2);
+        assert!(!shared_event_store_is_empty(&paths).expect("non-empty shared events"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn restore_shared_events_from_local_entries_skips_existing_ids() {
+        let temp_root = std::env::temp_dir().join(format!("valve-shared-test-{}", Uuid::new_v4()));
+        let paths = test_paths(temp_root.clone());
+        fs::create_dir_all(&paths.shared_root).expect("shared root");
+        let local_entries = vec![entry(
+            CLOSE_ACTION,
+            CLOSED_STATE,
+            "2026-06-24 17:00:00",
+            "Sean",
+        )];
+
+        let first = restore_shared_events_from_local_entries(&paths, "client-1", &local_entries)
+            .expect("first restore");
+        let second = restore_shared_events_from_local_entries(&paths, "client-1", &local_entries)
+            .expect("second restore");
+        let shared_entries = load_shared_events(&paths.events_dir).expect("shared entries");
+
+        assert_eq!(first, 1);
+        assert_eq!(second, 0);
+        assert_eq!(shared_entries.len(), 1);
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]

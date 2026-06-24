@@ -166,7 +166,7 @@ export function ValvePanel() {
   const [sharedSyncDisplay, setSharedSyncDisplay] =
     useState<SharedSyncDisplay | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState("0.1.7");
+  const [appVersion, setAppVersion] = useState("0.1.8");
   const { installAvailableUpdate, updateState } = useDesktopUpdates(
     appVersion,
     !isStateLoading,

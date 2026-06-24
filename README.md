@@ -8,7 +8,7 @@ This project reuses the same stack and visual design as the [PDU Data Automation
 
 ## Status
 
-`v0.1.5` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, updater, and shared-first connected-mode saves.
+`v0.1.8` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, updater, shared-first connected-mode saves, and local mirror recovery.
 
 Implemented now:
 
@@ -19,8 +19,9 @@ Implemented now:
 - PDU-style operator-name prompt with saved names, filtering, removal, blank-name validation, and case-insensitive dedupe
 - Local AppData JSONL source log for open and close events
 - S-drive shared sync through compact `shared\state.json` plus per-client shared event files
+- Local mirror of shared events for automatic shared-drive recovery
 - Generated local Excel workbook that can be opened from the app
-- Quiet updater through the GitHub latest release
+- Quiet updater through the GitHub latest release when signed updater metadata is published
 
 Not implemented yet:
 
@@ -104,6 +105,8 @@ S:\Engineering\Public\Syed_Hassaan_Shah\Main_Nitrogen_Valve_Log_App\shared\
 ```
 
 When the S-drive shared root is available, the app writes the shared event/state first, then updates the local JSONL cache. If the shared save fails, the local button should not flip by itself.
+
+Connected PCs also mirror shared event files into local `events.jsonl`. If `shared\events\` is deleted or emptied while this PC still has a local mirror, the backend automatically restores the shared event files from this PC during the normal state refresh.
 
 If Excel has the workbook open and locked, the app saves the JSONL event first and then reports that the workbook could not be refreshed. Close Excel and use **Open Log** again to regenerate/open the workbook.
 

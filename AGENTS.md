@@ -14,7 +14,7 @@ C:\Projects\Active\PDU_Data_Automation_App
 
 ## Current Status
 
-`v0.1.7` — temporary manual open/close valve logging with local AppData logs and S-drive shared sync (`shared\events\` source of truth; `state.json` is best-effort cache).
+`v0.1.8` — temporary manual open/close valve logging with local AppData logs, S-drive shared sync, and automatic local-mirror restore when `shared\events\` is cleared.
 
 Implemented:
 
@@ -25,6 +25,7 @@ Implemented:
 - PDU-style operator-name prompt with saved names, filtering, removal, blank validation, and case-insensitive dedupe
 - Rust backend commands for current-state lookup, manual close logging, manual open logging, and opening the log workbook
 - Logs live in `%APPDATA%\valve-log\logs\` (`events.jsonl` + `Main Nitrogen Valve Log.xlsx`) on each PC. S-drive `shared\` holds `state.json` and per-client `events\{client_id}\` for multi-machine sync (watcher on `shared\` only). Clear log data manually per PC when needed.
+- Connected PCs mirror shared event files into local `events.jsonl`; if the S-drive shared event store is cleared, a recently connected PC can automatically restore shared events from its local mirror.
 
 Not implemented yet:
 
@@ -71,7 +72,7 @@ Separate concerns as the app grows:
 - **Rust backend** — command dispatch, timestamps, JSONL/Excel logging, future device I/O, config.
 - **Config** — connection settings, log paths, hardware profiles (add when needed under `config/`).
 
-Current flow is manual: React loads the latest saved JSONL state -> button click -> operator prompt -> Tauri invoke -> Rust validates the open/close transition -> Rust appends JSONL -> Rust regenerates/opens Excel -> React updates the displayed manual state. This does not control or read physical valve hardware.
+Current flow is manual: React loads the latest mirrored JSONL/shared state -> button click -> operator prompt -> Tauri invoke -> Rust validates the open/close transition -> Rust writes shared first when connected -> Rust mirrors/appends local JSONL -> Rust regenerates/opens Excel -> React updates the displayed manual state. This does not control or read physical valve hardware.
 
 ## Key Files
 

@@ -22,6 +22,35 @@ Format:
 
 ---
 
+## 2026-06-24 — v0.1.8: local shared-event mirror and automatic restore
+
+**What changed**
+- Connected PCs now mirror missing shared event files into local `events.jsonl` during normal state refresh.
+- If `shared\events\` is missing or empty while this PC has local mirrored events, the backend automatically restores shared event files from this PC.
+- Changed connected-mode saves back to shared-first, then local-cache append; if the shared event write fails, this PC no longer mutates its local log first.
+- Added `local_log_write_failed` handling when the shared event was saved but this PC's local cache append fails.
+- Bumped app metadata to `v0.1.8` for release.
+- Built local manual installer artifacts under `release/v0.1.8`; signed updater artifacts were not generated because `TAURI_SIGNING_PRIVATE_KEY` is not available in this workspace.
+
+**Why**
+- If someone deletes `shared\` or `shared\events\` on the S-drive, a recently connected PC should rebuild the shared event store from its local mirror without an operator prompt.
+- Local-before-shared connected saves could make only the initiating PC flip state after an S-drive write failure.
+
+**How to verify**
+- `cd backend && cargo check`
+- `cd backend && cargo test`
+- `bun run build`
+- `bun run tauri -- build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false,"windows":{"nsis":{"compression":"none"}}}}'`
+- On PC A, log an event and confirm `shared\events\...` is written.
+- On PC B, launch/refresh while shared exists and confirm the shared event is mirrored into PC B's local `%APPDATA%\valve-log\logs\events.jsonl`.
+- Clear `shared\events\`, refresh PC B, and confirm shared event files are restored automatically from PC B's local mirror.
+
+**Follow-ups**
+- Replace the simple shared-root existence check with a cached write-test connectivity check.
+- Generate signed updater artifacts and `latest.json` once the existing Tauri updater private key is available.
+
+---
+
 ## 2026-06-24 — v0.1.6: restore v0.1.1 shared sync save path
 
 **What changed**

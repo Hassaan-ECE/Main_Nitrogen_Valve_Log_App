@@ -93,17 +93,20 @@ App.tsx
 - `log_valve_opened`
 - `get_current_valve_state`
 - `open_valve_log`
+- `open_valve_log_folder`
 
 `backend/src/commands.rs` maps Tauri command calls into `backend/src/valve_log.rs`.
 
 `backend/src/valve_log.rs` owns:
 
 - operator-name trim/blank validation
-- Documents log path resolution through Tauri path APIs
+- AppData log path resolution through Tauri path APIs
 - current-state lookup from the latest valid JSONL entry
 - open/close transition validation
 - log directory creation
 - JSONL append
+- shared event publish and shared-cache refresh
+- local mirroring of shared events and automatic shared-event restore
 - Excel workbook regeneration from all JSONL source entries
 - opening the workbook with the system default app
 - structured operator-facing error DTOs
@@ -130,16 +133,16 @@ No log file is treated as assumed open, so **Close Valve** is allowed and **Open
 
 ## Storage
 
-Default directory:
+Local per-PC directory:
 
 ```text
-%USERPROFILE%\Documents\Main Nitrogen Valve Log\
+%APPDATA%\valve-log\logs\
 ```
 
 Source log:
 
 ```text
-Main Nitrogen Valve Log.jsonl
+events.jsonl
 ```
 
 Excel workbook:
@@ -148,7 +151,17 @@ Excel workbook:
 Main Nitrogen Valve Log.xlsx
 ```
 
-JSONL is the durable source. The Excel workbook is regenerated from JSONL so the operator-facing workbook can be rebuilt after an Excel lock or failed refresh.
+Local JSONL is this PC's local source/cache. Cross-PC sync uses shared per-event JSON files under:
+
+```text
+S:\Engineering\Public\Syed_Hassaan_Shah\Main_Nitrogen_Valve_Log_App\shared\
+```
+
+Shared event files live in `shared\events\{client_id}\`. `shared\state.json` is a compact cache for the latest shared state; event files are the durable shared source. In connected mode, the backend writes the shared event first, then appends the same event to this PC's local `events.jsonl` cache. If the shared event write fails, local state is not changed by that failed connected save.
+
+When shared event files are available, each connected PC mirrors missing shared events into its local `events.jsonl`. If the shared event store is later empty while this PC still has a local mirror, the backend automatically restores missing shared event files from that mirror during normal state refresh.
+
+The Excel workbook is regenerated from the available local/shared event set so the operator-facing workbook can be rebuilt after an Excel lock or failed refresh.
 
 Workbook sheet: `Valve Log`
 
@@ -175,6 +188,7 @@ Important cases:
 - `source_log_write_failed` - no event is written.
 - `invalid_transition` - duplicate or stale open/close attempt; no event is written.
 - `shared_sync_failed` during connected-mode logging - no local event is written unless the shared event and shared state were committed first.
+- `shared_restore_failed` during background recovery - the shared event store could not be restored from this PC's local mirror.
 - `local_log_write_failed` during connected-mode logging - shared sync already saved the event, but this PC's local JSONL cache could not be updated; the frontend can still update from the saved shared event.
 - `excel_refresh_failed` during open/close - JSONL may already be saved; the frontend updates the displayed state when the backend includes the saved entry.
 - `excel_refresh_failed` during Open Log - close Excel and retry.
