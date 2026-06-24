@@ -22,6 +22,27 @@ Format:
 
 ---
 
+## 2026-06-24 — v0.1.4: one-time local log reset on update
+
+**What changed**
+- Added `backend/src/migrations.rs` — first launch of v0.1.4 deletes `%APPDATA%\valve-log\logs\` once (marker: `migrations\clear_local_logs_v0.1.4.done`).
+- Migration runs at startup before state load so updated PCs drop stale local JSONL/Excel and reload from shared sync.
+- Released v0.1.4; replaces v0.1.3 on GitHub and S-drive.
+
+**Why**
+- Admin can clear `shared\` on S-drive, users update, and local history is wiped automatically for a coordinated fresh start.
+
+**How to verify**
+- On two PCs with v0.1.3, log different events locally.
+- Clear `shared\` on S-drive (or set desired shared state).
+- Update both PCs to v0.1.4 via footer updater.
+- Confirm `%APPDATA%\valve-log\logs\` is gone/recreated empty and both PCs show the same shared-derived state.
+
+**Follow-ups**
+- Remove migration in a future version once all lab PCs have passed through v0.1.4.
+
+---
+
 ## 2026-06-24 — v0.1.3: revert to local AppData logs, keep shared sync
 
 **What changed**
